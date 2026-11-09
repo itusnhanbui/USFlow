@@ -1336,6 +1336,22 @@
       border-color: rgba(245, 158, 11, 0.55);
     }
 
+    .course-tile.status-FAILED {
+      background: #FEF2F2;
+      border-color: #EF4444;
+      box-shadow: inset 0 0 0 1px #EF4444;
+    }
+
+    .course-tile.status-FAILED::before {
+      background: #EF4444;
+    }
+
+    .course-tile.status-FAILED .cat-shape-badge {
+      color: #DC2626;
+      border-color: rgba(239, 68, 68, 0.45);
+      background: #FFFFFF;
+    }
+
     .tile-row-top {
       display: flex;
       align-items: flex-start;
@@ -1402,6 +1418,13 @@
       background: var(--status-doing);
       border-color: var(--status-doing);
       color: #FFFFFF;
+    }
+
+    .status-orb-btn.FAILED {
+      background: #EF4444;
+      border-color: #DC2626;
+      color: #FFFFFF;
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.16);
     }
 
     /* Center Course Name Display (Prominent Vietnamese Course Title) */
@@ -3654,19 +3677,19 @@
                 <!-- 3 Geometric Stats Cards (Credits Ring, GPA Ring, 3 Sub-condition Pills) -->
                 <div class="metrics-bento">
                   <!-- Ring 1: 138 Credits Progress -->
-                  <div class="metric-tile" title="Tín chỉ chuyên môn /138; không tính GDTC, GDQP, ngoại ngữ">
+                  <div class="metric-tile" title="Tổng TC đã đăng ký: môn đạt, đang học và rớt /138; không tính GDTC, GDQP, ngoại ngữ">
                     <svg class="ring-svg" viewBox="0 0 72 72">
                       <circle class="ring-bg" cx="36" cy="36" r="28"></circle>
                       <circle id="ringCreditsBar" class="ring-meter" cx="36" cy="36" r="28" stroke="var(--accent-primary)" stroke-dasharray="175.9" stroke-dashoffset="175.9"></circle>
                     </svg>
                     <div class="metric-info">
                       <div class="metric-value mono">
-                        <span id="statCreditsEarned">0</span>
+                        <span id="statCreditsProgress">0</span>
                         <span style="font-size:0.82rem;color:var(--text-muted)">/138 TC</span>
                       </div>
                       <div class="metric-sub">
                         <span id="statCreditsPct" class="mono" style="color:var(--accent-primary)">0%</span>
-                        <span>• Đang học: <b id="statCreditsInProg">0</b></span>
+                        <span>• Đạt: <b id="statCreditsEarned">0</b> TC • Đang học: <b id="statCreditsInProg">0</b> TC • Rớt: <b id="statCreditsFailed">0</b> TC</span>
                       </div>
                     </div>
                   </div>
@@ -3923,7 +3946,7 @@
             <div class="course-summary-card">
               <div class="course-summary-head">
                 <span class="course-summary-badge">TC</span>
-                <span class="course-summary-copy">Tín chỉ tích lũy</span>
+                <span class="course-summary-copy">Tổng TC đã đăng ký</span>
               </div>
               <div class="course-summary-body">
                 <svg class="ring-svg" viewBox="0 0 72 72" aria-hidden="true">
@@ -3931,8 +3954,8 @@
                   <circle id="courseRingCredits" class="ring-meter" cx="36" cy="36" r="28" stroke="var(--accent-primary)" stroke-dasharray="175.9" stroke-dashoffset="175.9"></circle>
                 </svg>
                 <div class="course-summary-text">
-                  <div class="course-summary-value mono"><span id="courseCreditsEarned">0</span><small>/138</small></div>
-                  <div class="course-summary-meta"><span id="courseCreditsPct">0%</span> • Đang học: <b id="courseCreditsInProg">0</b> TC</div>
+                  <div class="course-summary-value mono"><span id="courseCreditsProgress">0</span><small>/138</small></div>
+                  <div class="course-summary-meta"><span id="courseCreditsPct">0%</span> • Đạt: <b id="courseCreditsEarned">0</b> TC • Đang học: <b id="courseCreditsInProg">0</b> TC • Rớt: <b id="courseCreditsFailed">0</b> TC</div>
                 </div>
               </div>
             </div>
@@ -4004,6 +4027,7 @@
               <button class="filter-chip" data-status="DA_XONG" title="Đã hoàn thành">● Đạt</button>
               <button class="filter-chip" data-status="DANG_HOC" title="Đang học">◐ Đang học</button>
               <button class="filter-chip" data-status="CHUA_HOC" title="Chưa học">○ Chưa</button>
+              <button class="filter-chip" data-status="FAILED" title="Điểm học phần dưới 4.0">✕ Rớt môn</button>
             </div>
           </div>
 
@@ -4955,6 +4979,15 @@
         convertScore10To4(score10).passed;
     }
 
+    function isFailedCourse(course) {
+      const rec = getCourseRecord(course);
+      if (rec.score10 === null || String(rec.score10).trim() === '') return false;
+      const score10 = Number(rec.score10);
+      return Number.isFinite(score10) &&
+        score10 >= 0 &&
+        score10 < 4;
+    }
+
     const SUB_CONDITION_COURSES = {
       gdtc: ['BAA00021', 'BAA00022'],
       gdqp: ['BAA00030'],
@@ -5001,6 +5034,8 @@
       const activeCourses = getAllActiveCourses();
       let earnedCredits = 0;
       let inProgressCredits = 0;
+      let failedCredits = 0;
+      let registeredCredits = 0;
       let gradedCredits = 0;
       let weightedSum4 = 0;
       let weightedSum10 = 0;
@@ -5023,18 +5058,20 @@
         const conv = hasValidScore ? convertScore10To4(rec.score10) : { score4: null, letter: '-', passed: false };
 
         const isCompleted = isPassedCourse(course);
+        const isFailed = hasValidScore && !conv.passed;
+        const isRegistered = isCompleted || rec.status === 'DANG_HOC' || isFailed;
 
-        if (rec.status === 'DANG_HOC') {
-          if (!isSubCondition) inProgressCredits += course.credits;
+        if (!isSubCondition && isRegistered) {
+          registeredCredits += course.credits;
+          if (isFailed) failedCredits += course.credits;
+          else if (isCompleted) earnedCredits += course.credits;
+          else if (rec.status === 'DANG_HOC') inProgressCredits += course.credits;
         }
 
         if (course.type === 'BB' && !isCompleted) mandatoryDebtCount++;
 
         if (isCompleted) {
           catEarned[course.category] = (catEarned[course.category] || 0) + course.credits;
-          if (!isSubCondition) {
-            earnedCredits += course.credits;
-          }
         }
 
         // GPA includes completed/graded professional courses (status DA_XONG), excluding condition courses.
@@ -5079,6 +5116,9 @@
       return {
         earnedCredits,
         inProgressCredits,
+        failedCredits,
+        registeredCredits,
+        progressCredits: registeredCredits,
         gradedCredits,
         mandatoryDebtCount,
         allMandatoryPassed,
@@ -5166,20 +5206,26 @@
       renderCoverBanner();
 
       // Ring 1: Credits
-      const pctCredits = Math.min(100, Math.round((m.earnedCredits / 138) * 100));
-      const offsetCredits = circumference - (Math.min(1, m.earnedCredits / 138) * circumference);
+      const pctCredits = Math.min(100, Math.round((m.registeredCredits / 138) * 100));
+      const offsetCredits = circumference - (Math.min(1, m.registeredCredits / 138) * circumference);
       document.getElementById('ringCreditsBar').style.strokeDashoffset = offsetCredits.toFixed(1);
+      document.getElementById('statCreditsProgress').textContent = m.progressCredits;
       document.getElementById('statCreditsEarned').textContent = m.earnedCredits;
       document.getElementById('statCreditsPct').textContent = `${pctCredits}%`;
-      document.getElementById('statCreditsInProg').textContent = `${m.inProgressCredits} TC`;
+      document.getElementById('statCreditsInProg').textContent = m.inProgressCredits;
+      document.getElementById('statCreditsFailed').textContent = m.failedCredits;
       const courseCreditsRing = document.getElementById('courseRingCredits');
       if (courseCreditsRing) courseCreditsRing.style.strokeDashoffset = offsetCredits.toFixed(1);
       const courseCreditsEarned = document.getElementById('courseCreditsEarned');
       if (courseCreditsEarned) courseCreditsEarned.textContent = m.earnedCredits;
+      const courseCreditsProgress = document.getElementById('courseCreditsProgress');
+      if (courseCreditsProgress) courseCreditsProgress.textContent = m.registeredCredits;
       const courseCreditsPct = document.getElementById('courseCreditsPct');
       if (courseCreditsPct) courseCreditsPct.textContent = `${pctCredits}%`;
       const courseCreditsInProg = document.getElementById('courseCreditsInProg');
       if (courseCreditsInProg) courseCreditsInProg.textContent = `${m.inProgressCredits}`;
+      const courseCreditsFailed = document.getElementById('courseCreditsFailed');
+      if (courseCreditsFailed) courseCreditsFailed.textContent = `${m.failedCredits}`;
 
       // Ring 2: GPA 4.0
       const offsetGpa = circumference - (Math.min(1, m.gpa4 / 4.0) * circumference);
@@ -5329,16 +5375,24 @@
       document.querySelectorAll('#catFilterStrip .filter-chip').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.catFilter === appState.activeCategoryFilter);
       });
+      document.querySelectorAll('#statusFilterStrip .filter-chip').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.status === appState.activeStatusFilter);
+      });
 
       const filtered = courses.filter(c => {
         const rec = getCourseRecord(c);
+        const isFailed = isFailedCourse(c);
         if (appState.activeCategoryFilter !== 'ALL' && c.category !== appState.activeCategoryFilter) {
           return false;
         }
         if (appState.activeSemesterFilter !== 'ALL' && Number(rec.semester) !== Number(appState.activeSemesterFilter)) {
           return false;
         }
-        if (appState.activeStatusFilter !== 'ALL' && rec.status !== appState.activeStatusFilter) {
+        if (appState.activeStatusFilter === 'FAILED') {
+          if (!isFailed) return false;
+        } else if (appState.activeStatusFilter === 'DA_XONG') {
+          if (rec.status !== 'DA_XONG' || isFailed) return false;
+        } else if (appState.activeStatusFilter !== 'ALL' && rec.status !== appState.activeStatusFilter) {
           return false;
         }
         if (q) {
@@ -5362,6 +5416,7 @@
         const rec = getCourseRecord(course);
         const catMeta = CATEGORY_META[course.category] || CATEGORY_META.DAI_CUONG;
         const isDK = course.category === 'DIEU_KIEN' || course.type === 'DK';
+        const isFailed = isFailedCourse(course);
         const scoreVal = rec.score10 !== null && rec.score10 !== undefined ? rec.score10 : '';
         const conv = scoreVal !== '' ? convertScore10To4(scoreVal) : { score4: null, letter: '-' };
 
@@ -5374,7 +5429,7 @@
           : (conv.letter !== '-' ? `${conv.letter}•${conv.score4.toFixed(0)}` : '—');
 
         return `
-          <article class="course-tile status-${rec.status}"
+          <article class="course-tile status-${isFailed ? 'FAILED' : rec.status}"
                    data-code="${course.code}"
                    style="--tile-cat-color: ${catMeta.color}">
             <!-- Row 1: Category Geometric Icon + Credits + Semester & Status Orb -->
@@ -5382,16 +5437,16 @@
               <div class="course-top-meta">
                 <span class="cat-shape-badge mono">
                   ${getCategorySvgIcon(course.category)}
-                  <span>${course.credits} TC</span>
+                  <span>${isFailed ? `0/${course.credits} TC` : `${course.credits} TC`}</span>
                 </span>
                 <span class="sem-mini-tag mono">HK${rec.semester}</span>
                 <span class="course-code-mini mono">${course.code} · ${course.type}</span>
               </div>
-              <button class="status-orb-btn ${rec.status}"
+              <button class="status-orb-btn ${isFailed ? 'FAILED' : rec.status}"
                       data-action="cycle-status"
                       data-code="${course.code}"
-                      title="Đổi trạng thái: Chưa học (○) → Đang học (◐) → Đã xong (●)">
-                ${getStatusSymbol(rec.status)}
+                      title="${isFailed ? 'Rớt môn: điểm dưới 4.0 · ' : ''}Đổi trạng thái: Chưa học (○) → Đang học (◐) → Đã xong (●)">
+                ${isFailed ? '✕' : getStatusSymbol(rec.status)}
               </button>
             </div>
 
